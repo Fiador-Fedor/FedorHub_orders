@@ -2,6 +2,7 @@ const Order = require("../models/orderModel");
 const { sendMessage } = require("../config/rabbitmq");
 const { Client } = require('@elastic/elasticsearch');
 const ProductCache = require("../models/productCacheModel");
+const Product = require('../models/productModel');
 
 
 // Set up Elasticsearch client
@@ -65,7 +66,7 @@ exports.createOrder = async (req, res) => {
 
     const order = new Order({
       user: { id: req.user.user_id, profileUrl: req.user.profileUrl },
-      products: productDetails.map(({ productId, quantity }) => ({ productId, quantity })),
+      products: productDetails.map(({ productId, quantity,sellerId }) => ({ productId, quantity,sellerId })),
       totalAmount,
     });
 
@@ -122,6 +123,32 @@ exports.getAllOrders = async (req, res) => {
   }
 };
 
+exports.getOrdersBySeller = async (req, res) => {
+  try {
+    const sellerId = req.user.user_id.toString(); // Ensure string type
+
+    // Query orders without ObjectId conversion
+    const orders = await Order.find({ 
+      "products.sellerId": sellerId // Direct string comparison
+    })
+    .populate('user.id', 'profileUrl') // Populate user data
+    .lean(); // Return plain JS objects
+
+    // Filter to only show seller's products
+    const filteredOrders = orders.map(order => ({
+      ...order,
+      products: order.products.filter(p => p.sellerId === sellerId)
+    }));
+
+    res.json(filteredOrders);
+  } catch (err) {
+    console.error("Error in getOrdersBySeller:", err.message);
+    res.status(500).json({ 
+      message: "Server error while fetching seller orders",
+      error: err.message 
+    });
+  }
+};
 
 // Get all orders for a user
 exports.getOrders = async (req, res) => {
